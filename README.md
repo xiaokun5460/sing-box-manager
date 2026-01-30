@@ -4,6 +4,7 @@
 
 专为 **OpenWrt 软路由** 设计，让全屋设备无感翻墙。
 
+![Version](https://img.shields.io/badge/Version-3.0.0-blue?style=flat-square)
 ![Web 界面](https://img.shields.io/badge/Web_UI-Tailwind_CSS-38B2AC?style=flat-square)
 ![协议支持](https://img.shields.io/badge/协议-SS%20%7C%20VMess%20%7C%20VLESS-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
@@ -16,6 +17,14 @@
 - **DNS 防泄漏** - 未知域名通过代理查询，保护隐私
 - **现代化界面** - 深色主题 Web 面板，手机电脑都能用
 
+## v3.0.0 新特性
+
+- **模块化架构** - 代码重构为清晰的模块结构 (api/config/generator/process/subscription)
+- **专业 YAML 解析** - 使用 `gopkg.in/yaml.v3` 库解析 Clash 订阅，更稳定可靠
+- **轮询替代 SSE** - Web 界面改用轮询机制，解决长连接假死问题
+- **智能轮询** - 页面不可见时自动暂停轮询，节省资源
+- **实时流量统计** - 仪表盘显示实时上传/下载速度
+
 ## 功能特性
 
 ### 核心功能
@@ -25,17 +34,18 @@
 
 ### 节点管理
 - **多协议支持** - Shadowsocks、VLESS、VMess
-- **多订阅格式** - 支持标准 URI 和 Clash YAML 格式订阅
+- **多订阅格式** - 支持标准 URI 和 Clash YAML 格式订阅（使用专业 YAML 库解析）
 - **节点测速** - TCP 延迟测试和 HTTP 连通性测试
 - **智能切换** - 自动选择最快可用节点
 - **故障检测** - 定时检测连接状态，失败自动切换
 
 ### Web 管理界面
 - **现代化设计** - Tailwind CSS + Alpine.js，深色主题
-- **仪表盘** - 服务状态、内存占用、TUN 状态、运行时间
+- **仪表盘** - 服务状态、内存占用、TUN 状态、运行时间、实时流量
 - **节点管理** - 搜索过滤、类型筛选、延迟显示、一键切换
 - **订阅管理** - 添加、编辑、更新订阅
-- **日志查看** - 搜索高亮、分类筛选（DNS/出站/重要）、日志级别设置
+- **规则管理** - 自定义分流规则（域名/IP/进程）
+- **日志查看** - 搜索过滤、级别筛选、日志级别设置
 - **连接管理** - 实时查看活跃连接、流量统计、断开连接
 
 ## 系统要求
@@ -72,13 +82,13 @@ git clone https://github.com/xiaokun5460/sing-box-manager.git
 cd sing-box-manager
 
 # 编译 (本机)
-go build -o sb main.go
+go build -o sb .
 
 # 交叉编译 (OpenWrt x86_64)
-GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o sb main.go
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o sb .
 
 # 交叉编译 (OpenWrt ARM64)
-GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o sb main.go
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o sb .
 
 # 安装到系统目录
 sudo cp sb /usr/bin/sb
@@ -90,11 +100,15 @@ sudo cp sb /usr/bin/sb
 
 ### 第一步：添加订阅
 
-创建订阅文件，每行一个订阅链接：
+通过 Web 界面或命令行添加订阅：
 
 ```bash
-sudo mkdir -p /etc/sing-box
-sudo nano /etc/sing-box/subscriptions.txt
+# 启动 Web 界面后，在"订阅"页面添加订阅链接
+sb web
+
+# 或使用命令行添加订阅文件
+sudo mkdir -p /etc/sing-box-manager
+sudo nano /etc/sing-box-manager/subscriptions.txt
 ```
 
 **支持的订阅格式：**
@@ -106,25 +120,16 @@ sudo nano /etc/sing-box/subscriptions.txt
 | VLESS URI | `vless://uuid@server:port?...` |
 | Clash YAML | 直接粘贴 Clash 订阅链接 |
 
-### 第二步：更新订阅并初始化
+### 第二步：更新订阅并启动
 
 ```bash
 sb update   # 从订阅链接获取节点
-sb init     # 生成完整的分流配置
+sb start    # 启动 sing-box
 ```
 
-`sb init` 会自动生成包含以下内容的配置：
-- TUN 透明代理入站
-- DNS 分流规则
-- 路由分流规则
-- 规则集自动下载
-
-### 第三步：启动服务
+### 第三步：访问 Web 界面
 
 ```bash
-# 启动 sing-box
-sb start
-
 # 启动 Web 管理界面
 sb web
 ```
@@ -141,6 +146,7 @@ sb web
 - TUN 接口状态
 - 运行时间统计
 - 当前节点和延迟
+- 实时上传/下载速度
 - 代理模式快速切换
 
 ### 节点管理
@@ -157,12 +163,9 @@ sb web
 
 ### 日志查看
 - 实时日志滚动
-- 关键词搜索高亮
-- 分类筛选：
-  - **DNS** - DNS 查询日志
-  - **出站** - 连接出站日志
-  - **重要** - 错误和警告
-- 日志级别设置（debug/info/warn/error）
+- 关键词搜索过滤
+- 级别筛选（debug/info/warn/error）
+- 日志级别动态设置
 - 清理 DNS 缓存
 
 ### 连接管理
@@ -365,13 +368,32 @@ chmod +x /etc/init.d/sb-web
 
 | 路径 | 说明 |
 |------|------|
+| `/etc/sing-box-manager/config.yaml` | 管理器配置文件 |
+| `/etc/sing-box-manager/state.json` | 运行状态（代理模式、当前节点） |
+| `/etc/sing-box-manager/cache/` | 订阅缓存目录 |
 | `/etc/sing-box/config.json` | sing-box 主配置文件（自动生成） |
-| `/etc/sing-box/config.json.bak` | 配置备份 |
-| `/etc/sing-box/nodes.txt` | 节点列表缓存 |
-| `/etc/sing-box/subscriptions.txt` | 订阅链接（每行一个） |
-| `/etc/sing-box/state.json` | 运行状态（代理模式、当前节点） |
-| `/etc/sing-box/cache.db` | DNS 和规则缓存 |
+| `/etc/sing-box/cache.db` | sing-box DNS 和规则缓存 |
 | `/var/log/sing-box.log` | sing-box 运行日志 |
+
+## 项目结构
+
+```
+sing-box-manager/
+├── main.go                 # 入口文件和 CLI 命令
+├── internal/
+│   ├── api/               # HTTP API 和 Web 界面
+│   │   ├── handlers.go    # API 处理函数
+│   │   ├── server.go      # HTTP 服务器
+│   │   └── web/           # 前端资源 (HTML/JS/CSS)
+│   ├── config/            # 配置管理
+│   ├── generator/         # sing-box 配置生成
+│   ├── openwrt/           # OpenWrt 集成
+│   ├── process/           # 进程管理
+│   ├── service/           # 业务逻辑层
+│   ├── subscription/      # 订阅解析 (URI/Clash YAML)
+│   └── utils/             # 工具函数
+└── deploy.sh              # 部署脚本
+```
 
 ## 常见问题
 

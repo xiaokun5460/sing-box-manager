@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sing-Box Manager</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { bg: '#0a0a0a', card: '#141414', border: '#262626', hover: '#1a1a1a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #141414; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+        .fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-dark-bg text-gray-200 min-h-screen" x-data="app()" x-init="init()">
+    <!-- Layout -->
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-56 bg-dark-card border-r border-dark-border flex flex-col">
+            <div class="p-4 border-b border-dark-border">
+                <h1 class="text-lg font-semibold text-white">Sing-Box</h1>
+                <p class="text-xs text-gray-500">Manager v3</p>
+            </div>
+            <nav class="flex-1 p-2 space-y-1">
+                <template x-for="item in menu" :key="item.id">
+                    <button @click="page = item.id"
+                        :class="page === item.id ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-dark-hover hover:text-gray-200'"
+                        class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors">
+                        <span x-html="item.icon"></span>
+                        <span x-text="item.name"></span>
+                    </button>
+                </template>
+            </nav>
+            <div class="p-3 border-t border-dark-border">
+                <div class="flex items-center gap-2 text-sm">
+                    <span :class="status.state === 'running' ? 'bg-green-500' : 'bg-gray-600'" class="w-2 h-2 rounded-full"></span>
+                    <span class="text-gray-400" x-text="status.state === 'running' ? '运行中' : '已停止'"></span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <main class="flex-1 overflow-hidden flex flex-col">
+            <!-- Page: Dashboard -->
+            <div x-show="page === 'dashboard'" x-cloak class="flex-1 overflow-auto p-6 space-y-4 fade-in">
+                <h2 class="text-xl font-semibold">仪表盘</h2>
+                <!-- Stats -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-xs text-gray-500 mb-1">状态</p>
+                        <p class="text-lg font-medium" :class="status.state === 'running' ? 'text-green-400' : 'text-gray-400'" x-text="status.state === 'running' ? '运行中' : '已停止'"></p>
+                    </div>
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-xs text-gray-500 mb-1">节点</p>
+                        <p class="text-lg font-medium" x-text="status.node_count || 0"></p>
+                    </div>
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-xs text-gray-500 mb-1">当前节点</p>
+                        <p class="text-lg font-medium truncate" x-text="status.current_node || '-'"></p>
+                    </div>
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-xs text-gray-500 mb-1">模式</p>
+                        <p class="text-lg font-medium" x-text="{'rule':'规则','global':'全局','direct':'直连'}[status.proxy_mode] || '-'"></p>
+                    </div>
+                </div>
+                <!-- Real-time Traffic -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-xs text-gray-500 mb-1">下载速度</p>
+                        <p class="text-lg font-medium text-green-400" x-text="traffic.downloadSpeedFormatted || '0 B/s'"></p>
+                    </div>
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-xs text-gray-500 mb-1">上传速度</p>
+                        <p class="text-lg font-medium text-blue-400" x-text="traffic.uploadSpeedFormatted || '0 B/s'"></p>
+                    </div>
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-xs text-gray-500 mb-1">总下载</p>
+                        <p class="text-lg font-medium" x-text="traffic.downloadFormatted || '0 B'"></p>
+                    </div>
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-xs text-gray-500 mb-1">活跃连接</p>
+                        <p class="text-lg font-medium" x-text="traffic.activeConnections || 0"></p>
+                    </div>
+                </div>
+                <!-- Actions -->
+                <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                    <p class="text-sm text-gray-400 mb-3">快捷操作</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button @click="startService()" :disabled="status.state==='running' || loading.start" class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 rounded-lg text-sm transition-colors" x-text="loading.start ? '启动中...' : '启动'"></button>
+                        <button @click="stopService()" :disabled="status.state!=='running' || loading.stop" class="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-40 rounded-lg text-sm transition-colors" x-text="loading.stop ? '停止中...' : '停止'"></button>
+                        <button @click="restartService()" :disabled="loading.restart" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:opacity-40 rounded-lg text-sm transition-colors" x-text="loading.restart ? '重启中...' : '重启'"></button>
+                        <button @click="refreshSubs()" :disabled="loading.refreshSubs" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-lg text-sm transition-colors" x-text="loading.refreshSubs ? '刷新中...' : '刷新订阅'"></button>
+                    </div>
+                </div>
+                <!-- Mode -->
+                <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                    <p class="text-sm text-gray-400 mb-3">代理模式</p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button @click="setMode('rule')" :disabled="loading.restart" :class="status.proxy_mode==='rule' ? 'bg-blue-600 border-blue-600' : 'border-dark-border hover:border-gray-600'" class="p-3 rounded-lg border text-center transition-colors disabled:opacity-50">
+                            <p class="font-medium text-sm">规则</p>
+                            <p class="text-xs text-gray-500">智能分流</p>
+                        </button>
+                        <button @click="setMode('global')" :disabled="loading.restart" :class="status.proxy_mode==='global' ? 'bg-blue-600 border-blue-600' : 'border-dark-border hover:border-gray-600'" class="p-3 rounded-lg border text-center transition-colors disabled:opacity-50">
+                            <p class="font-medium text-sm">全局</p>
+                            <p class="text-xs text-gray-500">全部代理</p>
+                        </button>
+                        <button @click="setMode('direct')" :disabled="loading.restart" :class="status.proxy_mode==='direct' ? 'bg-blue-600 border-blue-600' : 'border-dark-border hover:border-gray-600'" class="p-3 rounded-lg border text-center transition-colors disabled:opacity-50">
+                            <p class="font-medium text-sm">直连</p>
+                            <p class="text-xs text-gray-500">全部直连</p>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Nodes -->
+            <div x-show="page === 'nodes'" x-cloak class="flex-1 overflow-hidden flex flex-col fade-in">
+                <div class="p-4 border-b border-dark-border flex justify-between items-center gap-4">
+                    <h2 class="text-xl font-semibold">节点 <span class="text-sm text-gray-500" x-text="'(' + filteredNodes.length + '/' + nodes.length + ')'"></span></h2>
+                    <div class="flex items-center gap-2">
+                        <input type="text" x-model="nodeSearch" placeholder="搜索节点..." class="px-3 py-1.5 bg-dark-bg border border-dark-border rounded-lg text-sm w-40">
+                        <button @click="testAllNodes()" :disabled="testing" class="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 rounded-lg text-sm" x-text="testing ? '测速中...' : '批量测速'"></button>
+                        <button @click="refreshSubs()" :disabled="loading.refreshSubs" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm" x-text="loading.refreshSubs ? '刷新中...' : '刷新'"></button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-auto p-4">
+                    <div class="space-y-1">
+                        <template x-for="(node, i) in filteredNodes" :key="node.index">
+                            <div @click="selectNode(node.index)"
+                                :class="[
+                                    status.node_index === node.index ? 'bg-blue-600/20 border-blue-600' : 'border-dark-border hover:bg-dark-hover',
+                                    loading.switchNode ? 'cursor-wait' : 'cursor-pointer'
+                                ]"
+                                class="flex items-center justify-between p-3 rounded-lg border transition-colors">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <span x-show="switchingNodeIndex === node.index" class="text-yellow-400 animate-pulse">◎</span>
+                                    <span x-show="status.node_index === node.index && switchingNodeIndex !== node.index" class="text-blue-400">✓</span>
+                                    <span class="truncate" x-text="node.name"></span>
+                                    <span x-show="switchingNodeIndex === node.index" class="text-xs text-yellow-400">切换中...</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span :class="latencyColor(node.index)" class="text-xs" x-text="formatLatency(node.index)"></span>
+                                    <span class="text-xs text-gray-500 px-2 py-0.5 bg-dark-bg rounded" x-text="node.type"></span>
+                                    <button @click.stop="testNode(node.index)" class="p-1 hover:bg-dark-hover rounded text-gray-400 hover:text-white text-xs" title="测速">⚡</button>
+                                </div>
+                            </div>
+                        </template>
+                        <p x-show="filteredNodes.length === 0" class="text-center text-gray-500 py-8">暂无节点</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Subscriptions -->
+            <div x-show="page === 'subs'" x-cloak class="flex-1 overflow-hidden flex flex-col fade-in">
+                <div class="p-4 border-b border-dark-border flex justify-between items-center">
+                    <h2 class="text-xl font-semibold">订阅</h2>
+                    <button @click="showSubModal = true" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm">添加</button>
+                </div>
+                <div class="flex-1 overflow-auto p-4 space-y-2">
+                    <template x-for="sub in subs" :key="sub.id">
+                        <div class="bg-dark-card rounded-lg p-4 border border-dark-border">
+                            <div class="flex justify-between items-start gap-4">
+                                <div class="min-w-0 flex-1">
+                                    <p class="font-medium truncate" x-text="sub.name || '未命名'"></p>
+                                    <p class="text-xs text-gray-500 truncate mt-1" x-text="sub.url"></p>
+                                    <p class="text-xs text-gray-600 mt-1" x-text="sub.node_count + ' 个节点'"></p>
+                                </div>
+                                <div class="flex gap-1">
+                                    <button @click="editSub(sub)" class="p-1.5 hover:bg-dark-hover rounded text-gray-400 hover:text-white" title="编辑">✎</button>
+                                    <button @click="refreshOneSub(sub.id)" :disabled="loading.refreshSub[sub.id]" class="p-1.5 hover:bg-dark-hover rounded text-gray-400 hover:text-white disabled:opacity-50" :title="loading.refreshSub[sub.id] ? '刷新中...' : '刷新'" x-text="loading.refreshSub[sub.id] ? '...' : '↻'"></button>
+                                    <button @click="deleteSub(sub.id)" :disabled="loading.deleteSub[sub.id]" class="p-1.5 hover:bg-red-600/20 rounded text-gray-400 hover:text-red-400 disabled:opacity-50" title="删除">✕</button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <p x-show="subs.length === 0" class="text-center text-gray-500 py-8">暂无订阅</p>
+                </div>
+            </div>
+
+            <!-- Page: Rules -->
+            <div x-show="page === 'rules'" x-cloak class="flex-1 overflow-hidden flex flex-col fade-in">
+                <div class="p-4 border-b border-dark-border">
+                    <h2 class="text-xl font-semibold">规则</h2>
+                </div>
+                <div class="flex-1 overflow-auto p-4 space-y-4">
+                    <!-- Bypass -->
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <p class="text-sm text-gray-400 mb-3">绕过设置</p>
+                        <div class="space-y-3">
+                            <label class="flex items-center justify-between">
+                                <span class="text-sm">绕过局域网</span>
+                                <input type="checkbox" x-model="bypass.bypass_lan" @change="saveBypass()" class="w-4 h-4 rounded">
+                            </label>
+                            <label class="flex items-center justify-between">
+                                <span class="text-sm">绕过中国</span>
+                                <input type="checkbox" x-model="bypass.bypass_china" @change="saveBypass()" class="w-4 h-4 rounded">
+                            </label>
+                            <label class="flex items-center justify-between">
+                                <span class="text-sm">广告拦截</span>
+                                <input type="checkbox" x-model="bypass.block_ads" @change="saveBypass()" class="w-4 h-4 rounded">
+                            </label>
+                        </div>
+                    </div>
+                    <!-- Custom Rules -->
+                    <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                        <div class="flex justify-between items-center mb-3">
+                            <p class="text-sm text-gray-400">自定义规则</p>
+                            <button @click="showRuleModal = true" class="text-xs text-blue-400 hover:text-blue-300">+ 添加</button>
+                        </div>
+                        <div class="space-y-2">
+                            <template x-for="(rule, i) in rules" :key="i">
+                                <div class="flex items-center justify-between p-2 bg-dark-bg rounded-lg text-sm">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs text-gray-500 px-1.5 py-0.5 bg-dark-card rounded" x-text="rule.type"></span>
+                                        <span x-text="rule.value"></span>
+                                        <span class="text-gray-600">→</span>
+                                        <span :class="{'text-blue-400': rule.outbound==='proxy', 'text-green-400': rule.outbound==='direct', 'text-red-400': rule.outbound==='block'}" x-text="rule.outbound"></span>
+                                    </div>
+                                    <button @click="deleteRule(i)" class="text-gray-500 hover:text-red-400">✕</button>
+                                </div>
+                            </template>
+                            <p x-show="rules.length === 0" class="text-center text-gray-600 py-4 text-sm">暂无自定义规则</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Connections -->
+            <div x-show="page === 'conns'" x-cloak class="flex-1 overflow-hidden flex flex-col fade-in">
+                <div class="p-4 border-b border-dark-border flex justify-between items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-semibold">连接</h2>
+                        <p class="text-xs text-gray-500 mt-1">
+                            <span class="text-green-400" x-text="'↓ ' + formatBytes(connStats.downloadTotal || 0)"></span>
+                            <span class="mx-2">|</span>
+                            <span class="text-blue-400" x-text="'↑ ' + formatBytes(connStats.uploadTotal || 0)"></span>
+                            <span class="mx-2">|</span>
+                            <span x-text="(filteredConns.length || 0) + '/' + (conns.length || 0) + ' 连接'"></span>
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <select @change="changeConnSort($event.target.value)" class="px-2 py-1.5 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                            <option value="" :selected="connSort === ''">默认排序</option>
+                            <option value="download" :selected="connSort === 'download'">下载量</option>
+                            <option value="upload" :selected="connSort === 'upload'">上传量</option>
+                            <option value="time" :selected="connSort === 'time'">时间</option>
+                        </select>
+                        <input type="text" x-model="connSearch" placeholder="搜索连接..." class="px-3 py-1.5 bg-dark-bg border border-dark-border rounded-lg text-sm w-40">
+                        <button @click="closeAllConns()" :disabled="loading.closeConns" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg text-sm" x-text="loading.closeConns ? '断开中...' : '断开全部'"></button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-dark-card sticky top-0">
+                            <tr class="text-left text-gray-500">
+                                <th class="p-3 font-medium">主机</th>
+                                <th class="p-3 font-medium">类型</th>
+                                <th class="p-3 font-medium">出口</th>
+                                <th class="p-3 font-medium">下载</th>
+                                <th class="p-3 font-medium">上传</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-dark-border">
+                            <template x-for="conn in filteredConns" :key="conn.id">
+                                <tr class="hover:bg-dark-hover">
+                                    <td class="p-3 truncate max-w-xs" x-text="conn.metadata?.host || conn.metadata?.destinationIP || '-'"></td>
+                                    <td class="p-3 text-gray-500" x-text="conn.metadata?.network?.toUpperCase()"></td>
+                                    <td class="p-3"><span class="text-xs" x-text="conn.chains?.join(' → ')"></span></td>
+                                    <td class="p-3 text-green-400" x-text="formatBytes(conn.download || 0)"></td>
+                                    <td class="p-3 text-blue-400" x-text="formatBytes(conn.upload || 0)"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <p x-show="conns.length === 0" class="text-center text-gray-500 py-8">暂无连接</p>
+                </div>
+            </div>
+
+            <!-- Page: Logs -->
+            <div x-show="page === 'logs'" x-cloak class="flex-1 overflow-hidden flex flex-col fade-in">
+                <div class="p-4 border-b border-dark-border flex justify-between items-center gap-4">
+                    <h2 class="text-xl font-semibold">日志</h2>
+                    <div class="flex items-center gap-2">
+                        <input type="text" x-model="logSearch" placeholder="搜索日志..." class="px-3 py-1.5 bg-dark-bg border border-dark-border rounded-lg text-sm w-40">
+                        <select x-model="logLevel" class="px-3 py-1.5 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                            <option value="all">全部级别</option>
+                            <option value="error">error</option>
+                            <option value="warn">warn</option>
+                            <option value="info">info</option>
+                            <option value="debug">debug</option>
+                            <option value="trace">trace</option>
+                        </select>
+                        <select x-model="config.singbox.log_level" @change="setLogLevel(config.singbox.log_level)" class="px-3 py-1.5 bg-dark-bg border border-dark-border rounded-lg text-sm" title="日志输出级别">
+                            <option value="error">输出: error</option>
+                            <option value="warn">输出: warn</option>
+                            <option value="info">输出: info</option>
+                            <option value="debug">输出: debug</option>
+                            <option value="trace">输出: trace</option>
+                        </select>
+                        <button @click="clearLogs()" :disabled="loading.clearLogs" class="px-3 py-1.5 bg-dark-hover hover:bg-dark-border disabled:opacity-50 rounded-lg text-sm" x-text="loading.clearLogs ? '清空中...' : '清空'"></button>
+                    </div>
+                </div>
+                <div id="logBox" class="flex-1 overflow-auto p-4 font-mono text-xs bg-dark-bg">
+                    <template x-for="(log, i) in filteredLogs" :key="i">
+                        <div class="py-0.5" :class="{'text-red-400': log.level==='error', 'text-yellow-400': log.level==='warn', 'text-gray-400': log.level==='info', 'text-gray-500': log.level==='debug', 'text-gray-600': log.level==='trace'}">
+                            <span class="text-gray-600" x-text="formatTime(log.time)"></span>
+                            <span x-text="'[' + log.level + ']'"></span>
+                            <span x-text="log.message"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Page: Settings -->
+            <div x-show="page === 'settings'" x-cloak class="flex-1 overflow-auto p-6 space-y-4 fade-in">
+                <h2 class="text-xl font-semibold">设置</h2>
+                <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                    <p class="text-sm text-gray-400 mb-3">DNS 设置</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-xs text-gray-500">国内 DNS</label>
+                            <input type="text" x-model="config.dns.domestic_servers[0]" class="w-full mt-1 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500">代理 DNS</label>
+                            <input type="text" x-model="config.dns.proxy_servers[0]" class="w-full mt-1 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                        </div>
+                    </div>
+                    <label class="flex items-center gap-2 mt-3">
+                        <input type="checkbox" x-model="config.dns.use_fakeip" class="w-4 h-4 rounded">
+                        <span class="text-sm">启用 FakeIP</span>
+                    </label>
+                </div>
+                <div class="bg-dark-card rounded-xl p-4 border border-dark-border">
+                    <p class="text-sm text-gray-400 mb-3">缓存</p>
+                    <button @click="clearCache()" :disabled="loading.clearCache" class="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 rounded-lg text-sm" x-text="loading.clearCache ? '清空中...' : '清空缓存'"></button>
+                </div>
+                <button @click="saveConfig()" :disabled="loading.saveConfig" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm" x-text="loading.saveConfig ? '保存中...' : '保存设置'"></button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal: Subscription -->
+    <div x-show="showSubModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showSubModal = false">
+        <div class="bg-dark-card rounded-xl p-6 w-full max-w-md border border-dark-border">
+            <h3 class="text-lg font-semibold mb-4" x-text="editingSubId ? '编辑订阅' : '添加订阅'"></h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-gray-500">名称</label>
+                    <input type="text" x-model="subForm.name" placeholder="可选" class="w-full mt-1 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500">URL</label>
+                    <input type="url" x-model="subForm.url" placeholder="https://..." class="w-full mt-1 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button @click="showSubModal = false" :disabled="loading.saveSub" class="px-4 py-2 bg-dark-hover hover:bg-dark-border disabled:opacity-50 rounded-lg text-sm">取消</button>
+                <button @click="saveSub()" :disabled="loading.saveSub" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm" x-text="loading.saveSub ? '保存中...' : '保存'"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Rule -->
+    <div x-show="showRuleModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showRuleModal = false">
+        <div class="bg-dark-card rounded-xl p-6 w-full max-w-md border border-dark-border">
+            <h3 class="text-lg font-semibold mb-4">添加规则</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-gray-500">类型</label>
+                    <select x-model="ruleForm.type" class="w-full mt-1 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                        <option value="domain">域名 (完整匹配)</option>
+                        <option value="domain_suffix">域名后缀</option>
+                        <option value="domain_keyword">域名关键词</option>
+                        <option value="ip_cidr">IP CIDR</option>
+                        <option value="geosite">GeoSite</option>
+                        <option value="geoip">GeoIP</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500">值</label>
+                    <input type="text" x-model="ruleForm.value" :placeholder="{'domain':'example.com','domain_suffix':'.example.com','domain_keyword':'google','ip_cidr':'192.168.0.0/16','geosite':'google','geoip':'us'}[ruleForm.type] || 'example.com'" class="w-full mt-1 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-500">出口</label>
+                    <select x-model="ruleForm.outbound" class="w-full mt-1 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-sm">
+                        <option value="proxy">代理</option>
+                        <option value="direct">直连</option>
+                        <option value="block">阻止</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button @click="showRuleModal = false" :disabled="loading.addRule" class="px-4 py-2 bg-dark-hover hover:bg-dark-border disabled:opacity-50 rounded-lg text-sm">取消</button>
+                <button @click="addRule()" :disabled="loading.addRule" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm" x-text="loading.addRule ? '添加中...' : '添加'"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="fixed bottom-4 right-4 z-50 space-y-2">
+        <template x-for="(t, i) in toasts" :key="i">
+            <div :class="t.type === 'error' ? 'bg-red-600' : 'bg-green-600'" class="px-4 py-2 rounded-lg text-sm shadow-lg fade-in" x-text="t.msg"></div>
+        </template>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
